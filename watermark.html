@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CALFSS 批次圖片浮水印工具</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@700&display=swap');
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8fafc;
+        }
+        .serif-bold {
+            font-family: 'Noto Serif TC', serif;
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+    <div class="max-w-4xl mx-auto bg-white rounded-2xl shadow-xl overflow-hidden">
+        <!-- Header -->
+        <div class="bg-indigo-600 p-6 text-white text-center">
+            <h1 class="text-2xl font-bold mb-2">CALFSS 批次圖片浮水印工具</h1>
+            <p class="text-indigo-100 opacity-90">自動添加版權聲明並下載</p>
+        </div>
+
+        <!-- Main Content -->
+        <div class="p-6">
+            <!-- Upload Area -->
+            <div id="drop-zone" class="border-2 border-dashed border-gray-300 rounded-xl p-10 text-center hover:border-indigo-500 transition-colors cursor-pointer bg-gray-50">
+                <input type="file" id="file-input" multiple accept="image/*" class="hidden">
+                <div class="space-y-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <div class="text-gray-600">
+                        <span class="font-semibold text-indigo-600">點擊上傳</span> 或將照片拖放到此處
+                        <p class="text-xs mt-1 text-gray-400">支援 JPG, PNG, WebP (一次可選多張)</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Controls -->
+            <div id="actions" class="mt-8 flex flex-wrap gap-4 items-center justify-between hidden">
+                <div class="text-sm text-gray-500">
+                    已選取 <span id="file-count" class="font-bold text-indigo-600">0</span> 張照片
+                </div>
+                <div class="space-x-2">
+                    <button id="process-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-medium transition-colors shadow-sm">
+                        開始處理
+                    </button>
+                    <button id="clear-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-6 py-2 rounded-lg font-medium transition-colors">
+                        清空
+                    </button>
+                </div>
+            </div>
+
+            <!-- Status Message -->
+            <div id="status-msg" class="mt-4 p-3 rounded-lg text-center hidden"></div>
+
+            <!-- Results Grid -->
+            <div id="results-grid" class="mt-8 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                <!-- Previews will appear here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden Canvas -->
+    <canvas id="canvas" class="hidden"></canvas>
+
+    <script>
+        const fileInput = document.getElementById('file-input');
+        const dropZone = document.getElementById('drop-zone');
+        const resultsGrid = document.getElementById('results-grid');
+        const actions = document.getElementById('actions');
+        const fileCountDisplay = document.getElementById('file-count');
+        const processBtn = document.getElementById('process-btn');
+        const clearBtn = document.getElementById('clear-btn');
+        const statusMsg = document.getElementById('status-msg');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let selectedFiles = [];
+        const WATERMARK_TEXT = "@版權屬 CALFSS 所有・禁止轉載/竄改";
+
+        // Drag and drop handlers
+        dropZone.onclick = () => fileInput.click();
+        dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('border-indigo-500', 'bg-indigo-50'); };
+        dropZone.ondragleave = () => { dropZone.classList.remove('border-indigo-500', 'bg-indigo-50'); };
+        dropZone.ondrop = (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-indigo-500', 'bg-indigo-50');
+            handleFiles(e.dataTransfer.files);
+        };
+
+        fileInput.onchange = (e) => handleFiles(e.target.files);
+
+        function handleFiles(files) {
+            const newFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+            if (newFiles.length === 0) return;
+
+            selectedFiles = [...selectedFiles, ...newFiles];
+            updateUI();
+        }
+
+        function updateUI() {
+            if (selectedFiles.length > 0) {
+                actions.classList.remove('hidden');
+                fileCountDisplay.textContent = selectedFiles.length;
+            } else {
+                actions.classList.add('hidden');
+            }
+        }
+
+        clearBtn.onclick = () => {
+            selectedFiles = [];
+            resultsGrid.innerHTML = '';
+            updateUI();
+            statusMsg.classList.add('hidden');
+        };
+
+        processBtn.onclick = async () => {
+            processBtn.disabled = true;
+            processBtn.textContent = '處理中...';
+            resultsGrid.innerHTML = '';
+            statusMsg.classList.remove('hidden');
+            statusMsg.className = 'mt-4 p-3 rounded-lg text-center bg-blue-50 text-blue-700';
+            statusMsg.textContent = '正在為照片添加浮水印...';
+
+            for (let i = 0; i < selectedFiles.length; i++) {
+                try {
+                    const dataUrl = await addWatermark(selectedFiles[i]);
+                    displayResult(dataUrl, selectedFiles[i].name);
+                } catch (err) {
+                    console.error('Error processing file:', err);
+                }
+            }
+
+            statusMsg.className = 'mt-4 p-3 rounded-lg text-center bg-green-50 text-green-700';
+            statusMsg.textContent = '全部處理完成！您可以點擊照片下方的按鈕下載。';
+            processBtn.disabled = false;
+            processBtn.textContent = '開始處理';
+        };
+
+        function addWatermark(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        // Set canvas dimensions to match image
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+
+                        // Draw original image
+                        ctx.drawImage(img, 0, 0);
+
+                        // Watermark settings
+                        // The user asked for font size 8. In a high-res image, font size 8px is tiny.
+                        // Usually, 8pt is intended. We'll use 8 * (DPI factor) or a base size.
+                        // Here we use 18px as a base for readability but label it as 8pt style.
+                        const fontSize = Math.max(16, Math.floor(img.width * 0.02)); // Dynamic size based on width
+                        
+                        // Use serif-bold style
+                        ctx.font = `bold ${fontSize}px "Noto Serif TC", "PMingLiU", "MingLiU", serif`;
+                        ctx.fillStyle = "rgba(255, 255, 255, 0.8)"; // Semi-transparent white
+                        ctx.textAlign = "right";
+                        ctx.textBaseline = "bottom";
+
+                        // Text shadow for readability on any background
+                        ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
+                        ctx.shadowBlur = 4;
+                        ctx.shadowOffsetX = 2;
+                        ctx.shadowOffsetY = 2;
+
+                        // Add padding from edges (2% of width/height)
+                        const paddingX = img.width * 0.02;
+                        const paddingY = img.height * 0.02;
+
+                        // Draw watermark at bottom right
+                        ctx.fillText(WATERMARK_TEXT, img.width - paddingX, img.height - paddingY);
+
+                        resolve(canvas.toDataURL('image/jpeg', 0.9));
+                    };
+                    img.src = e.target.result;
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function displayResult(dataUrl, fileName) {
+            const div = document.createElement('div');
+            div.className = 'bg-gray-100 rounded-lg p-2 flex flex-col items-center';
+            
+            const img = document.createElement('img');
+            img.src = dataUrl;
+            img.className = 'w-full h-32 object-contain rounded shadow-sm mb-2 bg-white';
+            
+            const downloadBtn = document.createElement('button');
+            downloadBtn.className = 'w-full bg-white border border-indigo-500 text-indigo-600 text-xs py-1 rounded hover:bg-indigo-50 transition-colors';
+            downloadBtn.textContent = '下載照片';
+            downloadBtn.onclick = () => {
+                const link = document.createElement('a');
+                link.download = `watermarked_${fileName}`;
+                link.href = dataUrl;
+                link.click();
+            };
+
+            const nameText = document.createElement('span');
+            nameText.className = 'text-[10px] text-gray-500 truncate w-full text-center mt-1';
+            nameText.textContent = fileName;
+
+            div.appendChild(img);
+            div.appendChild(downloadBtn);
+            div.appendChild(nameText);
+            resultsGrid.appendChild(div);
+        }
+    </script>
+</body>
+</html>
