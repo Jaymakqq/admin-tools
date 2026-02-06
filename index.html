@@ -2,15 +2,121 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <title>我的教學工具箱</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>教育行政工具導航</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
     <style>
-        body { font-family: sans-serif; padding: 50px; line-height: 1.6; }
-        .tool-link { display: block; padding: 10px; background: #f0f0f0; margin-bottom: 10px; text-decoration: none; border-radius: 5px; color: #333; }
-        .tool-link:hover { background: #e0e0e0; }
+        :root {
+            --primary-color: #4A90E2;
+            --bg-color: #f5f7fa;
+            --card-bg: #ffffff;
+            --text-color: #333;
+        }
+
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 60px 20px;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .header h1 { margin: 0; font-size: 2.5rem; }
+        .header p { opacity: 0.9; margin-top: 10px; }
+
+        .container {
+            max-width: 1000px;
+            margin: -40px auto 40px;
+            padding: 0 20px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 25px;
+        }
+
+        /* 工具卡片樣式 */
+        .card {
+            background: var(--card-bg);
+            border-radius: 15px;
+            padding: 25px;
+            text-align: center;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            text-decoration: none;
+            color: inherit;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 20px rgba(0,0,0,0.1);
+        }
+
+        .icon-box {
+            width: 70px;
+            height: 70px;
+            background: var(--bg-color);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 15px;
+            font-size: 30px;
+            color: var(--primary-color);
+        }
+
+        .card h3 { margin: 10px 0; font-size: 1.25rem; }
+        .card p { font-size: 0.9rem; color: #666; line-height: 1.4; }
+
+        .badge {
+            font-size: 0.75rem;
+            background: #e1ecf8;
+            color: var(--primary-color);
+            padding: 4px 12px;
+            border-radius: 20px;
+            margin-top: 10px;
+        }
+
+        footer { text-align: center; padding: 40px; color: #999; font-size: 0.8rem; }
     </style>
 </head>
 <body>
-    <h1>教務/行政工具箱</h1>
-    <a class="tool-link" href="tools/watermark.html"> 1. 學校水印</a>
+
+<div class="header">
+    <h1>校園工具箱</h1>
+    <p>由 Gemini Canvas 生成的智慧行政與教學助手</p>
+</div>
+
+<div class="container">
+    <div class="grid">
+        
+        <a href="tools/watermark.html" class="card">
+            <div class="icon-box"><i class="fa-regular fa-water"></i></div>
+            <h3>學校水印</h3>
+            <p>在相片中加入學校水印</p>
+            <span class="badge">教學專用</span>
+        </a>
+
+    </div>
+</div>
+
+<footer>
+    &copy; 2026 CALFSS 行政工具 | 基於 Vercel 託管
+</footer>
+
 </body>
 </html>
