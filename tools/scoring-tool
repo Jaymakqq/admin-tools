@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>分組與個人計分工具</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #f8fafc;
+        }
+        .score-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .bar-transition {
+            transition: width 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .score-number {
+            font-variant-numeric: tabular-nums;
+        }
+        .tab-active {
+            border-bottom: 4px solid #1e293b;
+            color: #1e293b;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+
+    <div class="max-w-6xl mx-auto">
+        <!-- 頂部標題 -->
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 mb-6 text-center">
+            <h1 class="text-3xl font-black text-slate-800 flex items-center justify-center gap-2">
+                <span class="text-4xl">🏆</span> 綜合計分工具
+            </h1>
+            <p class="text-slate-500 mt-2 font-medium">獨立管理分組與個人數據</p>
+        </div>
+
+        <!-- 分頁切換 -->
+        <div class="flex justify-center mb-8 border-b border-slate-200">
+            <button id="tab-group" onclick="switchTab('group')" class="px-8 py-3 font-bold text-slate-400 transition-all tab-active">分組管理</button>
+            <button id="tab-student" onclick="switchTab('student')" class="px-8 py-3 font-bold text-slate-400 transition-all">個人管理</button>
+        </div>
+
+        <!-- 分組計分區塊 -->
+        <div id="section-group" class="space-y-6">
+            <div class="bg-slate-50 p-6 rounded-2xl border border-slate-100 flex flex-wrap items-center justify-center gap-4">
+                <div class="flex items-center gap-3 mr-4">
+                    <label class="text-slate-600 font-bold">組數</label>
+                    <input type="number" id="group-count" min="1" max="50" value="4" 
+                        class="w-16 bg-white border border-slate-200 px-2 py-1 rounded-lg text-xl font-bold text-blue-600 text-center focus:outline-none">
+                    <button onclick="generateGroups()" class="bg-slate-800 text-white px-4 py-2 rounded-xl font-bold text-sm">重設組別</button>
+                </div>
+                
+                <div class="h-8 w-px bg-slate-200 hidden md:block"></div>
+
+                <label class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-xl font-bold cursor-pointer text-sm transition-colors">
+                    匯入 CSV 累計
+                    <input type="file" accept=".csv" class="hidden" onchange="handleImport(event, 'group')">
+                </label>
+                <button onclick="exportData('group')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-xl font-bold text-sm transition-colors">
+                    匯出分組 CSV
+                </button>
+                <button onclick="resetScores('group')" class="bg-rose-100 text-rose-700 hover:bg-rose-200 px-5 py-2 rounded-xl font-bold text-sm transition-colors">
+                    重設分數 (歸零)
+                </button>
+            </div>
+            <div id="groups-container" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
+        </div>
+
+        <!-- 個人計分區塊 -->
+        <div id="section-student" class="hidden space-y-6">
+            <div class="bg-slate-50 p-6 rounded-2xl border border-slate-100 flex flex-wrap items-center justify-center gap-4">
+                <label class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-xl font-bold cursor-pointer text-sm transition-colors">
+                    匯入/累計名單
+                    <input type="file" accept=".csv" class="hidden" onchange="handleImport(event, 'student')">
+                </label>
+                <button onclick="exportData('student')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-xl font-bold text-sm transition-colors">
+                    匯出個人 CSV
+                </button>
+                <button onclick="resetScores('student')" class="bg-rose-100 text-rose-700 hover:bg-rose-200 px-5 py-2 rounded-xl font-bold text-sm transition-colors">
+                    重設分數 (歸零)
+                </button>
+            </div>
+            <div id="students-container" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                <!-- 個人計分卡 -->
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        let groups = [];
+        let students = [];
+        let groupMaxScore = 10;
+
+        const colorSchemes = [
+            'from-blue-400 to-blue-600', 'from-emerald-400 to-emerald-600',
+            'from-amber-400 to-amber-600', 'from-rose-400 to-rose-600',
+            'from-purple-400 to-purple-600', 'from-orange-400 to-orange-600'
+        ];
+
+        window.onload = () => {
+            generateGroups();
+        };
+
+        function switchTab(tab) {
+            document.getElementById('section-group').classList.toggle('hidden', tab !== 'group');
+            document.getElementById('section-student').classList.toggle('hidden', tab !== 'student');
+            document.getElementById('tab-group').classList.toggle('tab-active', tab === 'group');
+            document.getElementById('tab-student').classList.toggle('tab-active', tab === 'student');
+        }
+
+        // --- 分組邏輯 ---
+        function generateGroups() {
+            const count = parseInt(document.getElementById('group-count').value) || 4;
+            groups = Array.from({ length: count }, (_, i) => ({
+                id: i + 1,
+                name: `第 ${i + 1} 組`,
+                score: 0,
+                colorClass: colorSchemes[i % colorSchemes.length]
+            }));
+            updateMaxScore();
+            renderGroups();
+        }
+
+        function renderGroups() {
+            const container = document.getElementById('groups-container');
+            container.innerHTML = groups.map(group => {
+                const percentage = (group.score / groupMaxScore) * 100;
+                return `
+                <div class="score-card bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
+                    <div class="flex justify-between items-end mb-4">
+                        <input type="text" value="${group.name}" onchange="updateName('group', ${group.id}, this.value)"
+                            class="text-xl font-bold text-slate-700 bg-transparent border-b-2 border-transparent hover:border-slate-200 focus:border-blue-500 focus:outline-none w-2/3">
+                        <div class="score-number text-4xl font-black text-slate-800" id="g-score-${group.id}">${group.score}</div>
+                    </div>
+                    <div class="w-full bg-slate-100 h-4 rounded-full overflow-hidden mb-6">
+                        <div id="g-bar-${group.id}" class="bar-transition h-full bg-gradient-to-r ${group.colorClass}" style="width: ${percentage}%"></div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="changeScore('group', ${group.id}, -1)" class="flex-1 bg-slate-50 text-slate-400 py-3 rounded-xl font-bold hover:bg-rose-50 hover:text-rose-500 transition-colors">-1</button>
+                        <button onclick="changeScore('group', ${group.id}, 1)" class="flex-[2] bg-slate-800 text-white py-3 rounded-xl font-bold hover:bg-slate-900 transition-colors">+1 分</button>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        // --- 個人邏輯 ---
+        function renderStudents() {
+            const container = document.getElementById('students-container');
+            if (students.length === 0) {
+                container.innerHTML = '<div class="col-span-full text-center py-10 text-slate-400 italic font-medium">尚未匯入人名數據</div>';
+                return;
+            }
+            container.innerHTML = students.map(s => `
+                <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex flex-col items-center">
+                    <div class="text-slate-600 font-bold mb-2 truncate w-full text-center px-2" title="${s.name}">${s.name}</div>
+                    <div class="score-number text-3xl font-black text-indigo-600 mb-4" id="s-score-${s.id}">${s.score}</div>
+                    <div class="flex gap-2 w-full">
+                        <button onclick="changeScore('student', ${s.id}, -1)" 
+                                class="flex-1 bg-slate-50 text-slate-400 py-1.5 rounded-lg font-bold hover:bg-rose-50 hover:text-rose-500 transition-colors">
+                            -1
+                        </button>
+                        <button onclick="changeScore('student', ${s.id}, 1)" 
+                                class="flex-[2] bg-indigo-500 text-white py-1.5 rounded-lg font-bold hover:bg-indigo-600 shadow-sm transition-colors">
+                            +1
+                        </button>
+                    </div>
+                </div>`).join('');
+        }
+
+        // --- 通用計分 ---
+        function changeScore(type, id, delta) {
+            const list = type === 'group' ? groups : students;
+            const item = list.find(x => x.id === id);
+            if (item) {
+                item.score = Math.max(0, item.score + delta);
+                if (type === 'group') {
+                    updateGroupUI(item);
+                } else {
+                    const el = document.getElementById(`s-score-${id}`);
+                    if (el) el.innerText = item.score;
+                }
+            }
+        }
+
+        function updateGroupUI(group) {
+            const el = document.getElementById(`g-score-${group.id}`);
+            if (el) el.innerText = group.score;
+            updateMaxScore();
+            groups.forEach(g => {
+                const bar = document.getElementById(`g-bar-${g.id}`);
+                if (bar) bar.style.width = `${(g.score / groupMaxScore) * 100}%`;
+            });
+        }
+
+        function updateMaxScore() {
+            groupMaxScore = Math.max(10, ...groups.map(g => g.score));
+        }
+
+        function updateName(type, id, val) {
+            const item = (type === 'group' ? groups : students).find(x => x.id === id);
+            if (item) item.name = val;
+        }
+
+        // --- 匯入/累計處理 ---
+        function handleImport(event, type) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const content = e.target.result;
+                const lines = content.split(/\r?\n/).filter(l => l.trim() !== "");
+                
+                if (type === 'student') {
+                    let updatedCount = 0;
+                    let addedCount = 0;
+
+                    lines.forEach((line, i) => {
+                        if (i === 0 && (line.includes("名稱") || line.includes("姓名"))) return;
+                        const parts = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+                        
+                        let name, scoreToAdd;
+                        if (parts.length >= 3 && parts[0].includes("個人")) {
+                            name = parts[1].replace(/^"|"$/g, '').trim();
+                            scoreToAdd = parseInt(parts[2]) || 0;
+                        } else {
+                            name = parts[0].replace(/^"|"$/g, '').trim();
+                            scoreToAdd = parts.length > 1 ? (parseInt(parts[1]) || 0) : 0;
+                        }
+
+                        if (!name) return;
+                        const existing = students.find(s => s.name === name);
+                        if (existing) {
+                            existing.score += scoreToAdd;
+                            updatedCount++;
+                        } else {
+                            students.push({ id: Date.now() + i, name, score: scoreToAdd });
+                            addedCount++;
+                        }
+                    });
+
+                    renderStudents();
+                    showToast(`個人名單已更新: 累計 ${updatedCount} 人, 新增 ${addedCount} 人`);
+                } else {
+                    let groupMatches = 0;
+                    for (let i = 0; i < lines.length; i++) {
+                        const parts = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+                        if (parts.length < 2) continue;
+
+                        let name, score;
+                        if (parts[0].includes("分組") && parts.length >= 3) {
+                            name = parts[1].replace(/^"|"$/g, '').trim();
+                            score = parseInt(parts[2]) || 0;
+                        } else {
+                            name = parts[0].replace(/^"|"$/g, '').trim();
+                            score = parseInt(parts[1]) || 0;
+                        }
+
+                        const targetGroup = groups.find(g => g.name === name);
+                        if (targetGroup) {
+                            targetGroup.score += score;
+                            groupMatches++;
+                        }
+                    }
+                    updateMaxScore();
+                    renderGroups();
+                    showToast(`分組數據已累計 ${groupMatches} 組`);
+                }
+                event.target.value = '';
+            };
+            reader.readAsText(file);
+        }
+
+        // --- 獨立匯出 ---
+        function exportData(type) {
+            const now = new Date();
+            const dateStr = now.toLocaleDateString();
+            let csv = "\uFEFF類別,名稱,分數,記錄日期\n";
+            
+            if (type === 'group') {
+                groups.forEach(g => csv += `分組,"${g.name.replace(/"/g, '""')}",${g.score},${dateStr}\n`);
+            } else {
+                students.forEach(s => csv += `個人,"${s.name.replace(/"/g, '""')}",${s.score},${dateStr}\n`);
+            }
+
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `${type === 'group' ? '分組' : '個人'}計分_${now.getTime()}.csv`;
+            link.click();
+        }
+
+        // --- 獨立重置 (已修正無反應問題) ---
+        function resetScores(type) {
+            // 直接執行重置逻辑，不再使用 confirm() 避免瀏覽器攔截
+            if (type === 'group') {
+                groups.forEach(g => g.score = 0);
+                updateMaxScore();
+                renderGroups();
+                showToast("分組分數已歸零");
+            } else {
+                students.forEach(s => s.score = 0);
+                renderStudents();
+                showToast("個人分數已歸零");
+            }
+        }
+
+        function showToast(msg) {
+            const existing = document.querySelector('.toast-msg');
+            if (existing) existing.remove();
+
+            const t = document.createElement('div');
+            t.className = "toast-msg fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-2xl shadow-xl z-50 font-bold transition-all duration-300 pointer-events-none";
+            t.innerText = msg;
+            document.body.appendChild(t);
+            setTimeout(() => { 
+                t.style.opacity = '0'; 
+                setTimeout(() => t.remove(), 300); 
+            }, 2000);
+        }
+    </script>
+</body>
+</html>
