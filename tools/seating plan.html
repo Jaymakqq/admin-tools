@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>班級調位工具</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 html2canvas 庫用於圖片生成 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        .classroom-grid {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            padding: 20px;
+            min-height: 480px;
+        }
+        .column-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .seat {
+            width: 100px;
+            height: 90px;
+            border: 2px solid #333;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: white;
+            cursor: move;
+            font-weight: bold;
+            transition: transform 0.2s;
+            text-align: center;
+            padding: 5px;
+            word-break: break-all;
+            font-size: 0.9rem;
+            user-select: none;
+        }
+        .seat:hover { background-color: #f0fdf4; }
+        .seat.dragging { opacity: 0.5; transform: scale(1.05); }
+        .seat.drag-over { background-color: #dcfce7; border-color: #22c55e; }
+        .empty-seat { color: #ccc; font-weight: normal; font-size: 0.7rem; }
+        
+        .feature-box {
+            border: 2px solid #333;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #fafafa;
+        }
+        .door-arc {
+            width: 80px;
+            height: 80px;
+            border-left: 2px solid #333;
+            border-bottom: 2px solid #333;
+            border-bottom-left-radius: 100%;
+            position: absolute;
+            right: 20px;
+            bottom: 20px;
+        }
+
+        #pdfWrapper {
+            background: white;
+            width: 1100px; 
+            margin: 0 auto;
+        }
+
+        @media screen and (max-width: 1100px) {
+            #pdfWrapper {
+                width: 100%;
+                overflow-x: auto;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen p-4 md:p-8">
+
+    <div class="max-w-6xl mx-auto bg-white shadow-2xl rounded-xl p-4 md:p-8 no-print">
+        <h1 class="text-3xl font-bold text-center mb-6 text-gray-800">班級調位工具</h1>
+        
+        <!-- 用法提示 -->
+        <div class="mb-6 p-4 bg-amber-50 border-l-4 border-amber-400 rounded text-sm text-amber-900">
+            <h2 class="font-bold mb-1 flex items-center">
+                <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path></svg>
+                操作說明：
+            </h2>
+            <p>1. 填寫頂部資訊。 2. 匯入學生清單。 3. <strong>拖動座位</strong>交換位置。 4. 點擊「下載圖片」即可保存 JPG。</p>
+        </div>
+
+        <!-- 控制區域 -->
+        <div class="space-y-4 bg-blue-50 p-6 rounded-lg mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <input type="text" id="inputClassName" placeholder="班別 (如: 5C)" class="border p-2 rounded focus:ring-2 focus:ring-blue-400 outline-none" oninput="updateInfo()">
+                <input type="text" id="inputTeachers" placeholder="班主任" class="border p-2 rounded focus:ring-2 focus:ring-blue-400 outline-none" oninput="updateInfo()">
+                <input type="text" id="inputMonitors" placeholder="班長" class="border p-2 rounded focus:ring-2 focus:ring-blue-400 outline-none" oninput="updateInfo()">
+            </div>
+            <div class="flex flex-wrap items-center gap-4">
+                <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium">座位總數:</span>
+                    <select id="seatCount" class="border p-2 rounded bg-white" onchange="renderSeats()">
+                        <option value="28">28</option>
+                        <option value="30" selected>30</option>
+                        <option value="32">32</option>
+                        <option value="34">34</option>
+                    </select>
+                </div>
+                <input type="file" id="csvInput" accept=".csv,.txt" class="text-sm flex-1 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer">
+                <div class="flex gap-2">
+                    <button id="downloadBtn" onclick="downloadImage()" class="bg-green-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-green-700 shadow-md transition-all">下載圖片 (JPG)</button>
+                    <button onclick="clearAll()" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 shadow-sm">清空</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 可視化區域 -->
+    <div id="pdfWrapper" class="bg-white">
+        <div id="captureArea" class="relative p-10 bg-white border border-transparent">
+            
+            <!-- 抬頭資訊 -->
+            <div class="flex justify-between items-start mb-8">
+                <div class="text-xl space-y-1">
+                    <p>班主任：<span id="displayTeachers"></span></p>
+                    <p>班長：<span id="displayMonitors"></span></p>
+                </div>
+                <div id="displayClassName" class="text-8xl font-serif italic font-black text-gray-900 leading-none"></div>
+                <div class="w-40"></div> 
+            </div>
+
+            <!-- 教室內容 -->
+            <div class="flex gap-10 justify-center items-start">
+                <div class="feature-box w-12 h-[540px] flex-col text-xl font-bold text-gray-700" style="writing-mode: vertical-rl;">
+                    儲 物 櫃
+                </div>
+
+                <div id="seatingArea" class="classroom-grid">
+                    <!-- Seats generated here -->
+                </div>
+            </div>
+
+            <!-- 底部設施 -->
+            <div class="mt-12 flex justify-between items-end">
+                <div class="feature-box w-40 h-20 text-xl font-bold text-gray-700">老師枱</div>
+                <div class="feature-box w-1/2 h-16 text-3xl font-bold tracking-[1rem] text-gray-800">黑 板</div>
+                <div class="relative w-28 h-28 text-gray-700">
+                    <div class="absolute top-0 right-0 text-sm font-bold">門口</div>
+                    <div class="door-arc"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let students = [];
+        const seatingArea = document.getElementById('seatingArea');
+        const seatCountSelect = document.getElementById('seatCount');
+        const csvInput = document.getElementById('csvInput');
+
+        function updateInfo() {
+            document.getElementById('displayClassName').innerText = document.getElementById('inputClassName').value;
+            document.getElementById('displayTeachers').innerText = document.getElementById('inputTeachers').value;
+            document.getElementById('displayMonitors').innerText = document.getElementById('inputMonitors').value;
+        }
+
+        window.onload = () => {
+            renderSeats();
+            csvInput.addEventListener('change', handleFileUpload);
+        };
+
+        function handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                students = event.target.result.split(/\r?\n/)
+                    .map(line => line.split(',')[0].trim())
+                    .filter(name => name !== "");
+                renderSeats();
+            };
+            reader.readAsText(file);
+        }
+
+        function renderSeats() {
+            const totalSeats = parseInt(seatCountSelect.value);
+            seatingArea.innerHTML = '';
+            const numCols = 6; 
+            const baseRowsPerCol = Math.floor(totalSeats / numCols);
+            const extraSeats = totalSeats % numCols;
+
+            for (let c = 0; c < numCols; c++) {
+                const colDiv = document.createElement('div');
+                colDiv.className = 'column-group';
+                const rowsInThisCol = c < extraSeats ? baseRowsPerCol + 1 : baseRowsPerCol;
+
+                for (let r = 0; r < rowsInThisCol; r++) {
+                    let currentIdx = 0;
+                    for(let prevCol = 0; prevCol < c; prevCol++) {
+                        currentIdx += (prevCol < extraSeats ? baseRowsPerCol + 1 : baseRowsPerCol);
+                    }
+                    currentIdx += r;
+
+                    const seat = document.createElement('div');
+                    seat.className = 'seat';
+                    seat.draggable = true;
+                    seat.dataset.index = currentIdx;
+                    
+                    const name = students[currentIdx] || "";
+                    seat.innerHTML = name ? name : `<span class="empty-seat">空置</span>`;
+                    
+                    seat.addEventListener('dragstart', handleDragStart);
+                    seat.addEventListener('dragover', handleDragOver);
+                    seat.addEventListener('dragleave', handleDragLeave);
+                    seat.addEventListener('drop', handleDrop);
+                    seat.addEventListener('dragend', handleDragEnd);
+                    colDiv.appendChild(seat);
+                }
+                seatingArea.appendChild(colDiv);
+            }
+        }
+
+        let draggedIdx = null;
+        function handleDragStart(e) { draggedIdx = this.dataset.index; this.classList.add('dragging'); }
+        function handleDragOver(e) { e.preventDefault(); this.classList.add('drag-over'); }
+        function handleDragLeave() { this.classList.remove('drag-over'); }
+        function handleDrop(e) {
+            this.classList.remove('drag-over');
+            const targetIdx = this.dataset.index;
+            if (draggedIdx !== null && draggedIdx !== targetIdx) {
+                const max = Math.max(draggedIdx, targetIdx);
+                while(students.length <= max) students.push("");
+                [students[draggedIdx], students[targetIdx]] = [students[targetIdx], students[draggedIdx]];
+                renderSeats();
+            }
+        }
+        function handleDragEnd() { this.classList.remove('dragging'); }
+
+        function clearAll() { if (confirm('確定清空？')) { students = []; renderSeats(); } }
+
+        /**
+         * 下載為圖片 (JPG) 格式
+         */
+        async function downloadImage() {
+            const captureArea = document.getElementById('captureArea');
+            const btn = document.getElementById('downloadBtn');
+            const className = document.getElementById('inputClassName').value || "班級";
+            
+            btn.disabled = true;
+            btn.innerText = "生成圖片中...";
+
+            // 確保捲動到頂部，避免 html2canvas 捕捉範圍偏移
+            window.scrollTo(0,0);
+
+            try {
+                // 使用 html2canvas 進行捕捉
+                const canvas = await html2canvas(captureArea, {
+                    scale: 2, // 提高解析度
+                    backgroundColor: "#ffffff",
+                    useCORS: true,
+                    logging: false,
+                    width: 1100, // 強制固定寬度
+                    windowWidth: 1100
+                });
+
+                // 將 canvas 轉為 JPG
+                const imgData = canvas.toDataURL("image/jpeg", 0.9);
+                
+                // 觸發下載
+                const link = document.createElement('a');
+                link.href = imgData;
+                link.download = `${className}_座位表.jpg`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+            } catch (err) {
+                console.error("圖片下載失敗:", err);
+                alert("生成圖片失敗，請檢查瀏覽器權限");
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "下載圖片 (JPG)";
+            }
+        }
+    </script>
+</body>
+</html>
