@@ -114,7 +114,12 @@
                 <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path></svg>
                 操作說明：
             </h2>
-            <p>1. 填寫頂部資訊。 2. 匯入學生清單。 3. <strong>拖動座位</strong>交換位置。 4. 點擊「下載圖片」即可保存 JPG。</p>
+            <ul class="list-disc list-inside space-y-1">
+                <li>填寫頂部資訊、匯入學生名單（每行一個姓名）。</li>
+                <li><strong>拖動座位</strong>可直接交換位置。</li>
+                <li>點擊「下載圖片」保存 JPG。</li>
+                <li class="text-green-700 font-semibold">修正：已加入自動偵測編碼功能，支援 UTF-8 及 Big5 (Excel) 格式。</li>
+            </ul>
         </div>
 
         <!-- 控制區域 -->
@@ -197,17 +202,48 @@
             csvInput.addEventListener('change', handleFileUpload);
         };
 
+        /**
+         * 強化的檔案讀取邏輯：自動偵測 UTF-8 或 Big5
+         */
         function handleFileUpload(e) {
             const file = e.target.files[0];
             if (!file) return;
+
             const reader = new FileReader();
+            
+            // 先以 ArrayBuffer 讀取，以便進行編碼偵測
             reader.onload = (event) => {
-                students = event.target.result.split(/\r?\n/)
-                    .map(line => line.split(',')[0].trim())
-                    .filter(name => name !== "");
-                renderSeats();
+                const buffer = event.target.result;
+                const uint8Array = new Uint8Array(buffer);
+                
+                // 簡單的 UTF-8 偵測邏輯：檢查是否有 UTF-8 特有的位元組模式
+                // 或是直接嘗試用 TextDecoder 處理
+                let encoding = 'utf-8';
+                
+                // 嘗試使用 UTF-8 解碼並檢查是否有亂碼 (Replacement Character )
+                const utf8Decoder = new TextDecoder('utf-8', { fatal: true });
+                try {
+                    const text = utf8Decoder.decode(uint8Array);
+                    processText(text);
+                } catch (err) {
+                    // 如果 UTF-8 解碼失敗（fatal: true 會拋出錯誤），改用 Big5 (繁體中文常見編碼)
+                    const big5Decoder = new TextDecoder('big5');
+                    const text = big5Decoder.decode(uint8Array);
+                    processText(text);
+                }
             };
-            reader.readAsText(file);
+
+            reader.readAsArrayBuffer(file);
+        }
+
+        function processText(text) {
+            students = text.split(/\r?\n/)
+                .map(line => {
+                    const firstCol = line.split(',')[0];
+                    return firstCol.replace(/["']/g, "").trim();
+                })
+                .filter(name => name !== "");
+            renderSeats();
         }
 
         function renderSeats() {
@@ -266,9 +302,6 @@
 
         function clearAll() { if (confirm('確定清空？')) { students = []; renderSeats(); } }
 
-        /**
-         * 下載為圖片 (JPG) 格式
-         */
         async function downloadImage() {
             const captureArea = document.getElementById('captureArea');
             const btn = document.getElementById('downloadBtn');
@@ -277,24 +310,20 @@
             btn.disabled = true;
             btn.innerText = "生成圖片中...";
 
-            // 確保捲動到頂部，避免 html2canvas 捕捉範圍偏移
             window.scrollTo(0,0);
 
             try {
-                // 使用 html2canvas 進行捕捉
                 const canvas = await html2canvas(captureArea, {
-                    scale: 2, // 提高解析度
+                    scale: 2, 
                     backgroundColor: "#ffffff",
                     useCORS: true,
                     logging: false,
-                    width: 1100, // 強制固定寬度
+                    width: 1100, 
                     windowWidth: 1100
                 });
 
-                // 將 canvas 轉為 JPG
                 const imgData = canvas.toDataURL("image/jpeg", 0.9);
                 
-                // 觸發下載
                 const link = document.createElement('a');
                 link.href = imgData;
                 link.download = `${className}_座位表.jpg`;
